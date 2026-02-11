@@ -1,0 +1,413 @@
+// ==UserScript==
+// @name         Mod Menu
+// @namespace    https://narrow.one/
+// @version      1.6
+// @description  Toggle O
+// @match        *://narrow.one/*
+//@author        Parrol
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    /* ========= STATE ========= */
+    const state = {
+        tab: localStorage.getItem("mod_tab") || "ui",
+
+        uiColor: localStorage.getItem("mod_ui_color") || "#1e1e1e",
+        vsync: localStorage.getItem("mod_vsync") || "off",
+
+        chEnabled: JSON.parse(localStorage.getItem("ch_enabled") ?? "true"),
+        chSize: +localStorage.getItem("ch_size") || 4,
+        chThickness: +localStorage.getItem("ch_thickness") || 1,
+        chInner: localStorage.getItem("ch_inner") || "#ffffff",
+        chOuter: localStorage.getItem("ch_outer") || "#000000",
+
+        musicUrl: localStorage.getItem("music_url") || "",
+        musicLoop: JSON.parse(localStorage.getItem("music_loop") ?? "false"),
+
+        open: false
+    };
+
+    /* ========= UI COLOR ========= */
+    function applyUIColor() {
+        const root = document.documentElement;
+        root.style.setProperty("--default-ui-bg-color", state.uiColor);
+        root.style.setProperty("--secondary-ui-bg-color", state.uiColor);
+        root.style.setProperty("--shop-item-background-color", state.uiColor);
+    }
+    applyUIColor();
+
+    /* ========= VSYNC ========= */
+    let fpsLimit = null;
+    function applyVsync() {
+        fpsLimit =
+            state.vsync === "60" ? 60 :
+            state.vsync === "120" ? 120 :
+            state.vsync === "240" ? 240 :
+            null;
+    }
+    applyVsync();
+
+    let last = performance.now();
+    const _raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = function (cb) {
+        if (!fpsLimit) return _raf(cb);
+        const now = performance.now();
+        const interval = 1000 / fpsLimit;
+        if (now - last >= interval) {
+            last = now;
+            cb(now);
+        } else {
+            _raf(() => window.requestAnimationFrame(cb));
+        }
+    };
+
+    /* ========= CROSSHAIR ========= */
+    const chContainer = document.createElement("div");
+    chContainer.style.cssText = `
+        position:fixed;
+        top:50%;left:50%;
+        transform:translate(-50%,-50%);
+        pointer-events:none;
+        z-index:2147483647;
+    `;
+    document.body.appendChild(chContainer);
+
+    function renderCrosshair() {
+        chContainer.innerHTML = "";
+        if (!state.chEnabled) return;
+
+        if (state.chThickness > 0) {
+            const outer = document.createElement("div");
+            outer.style.cssText = `
+                width:${state.chSize + state.chThickness * 2}px;
+                height:${state.chSize + state.chThickness * 2}px;
+                background:${state.chOuter};
+                border-radius:50%;
+                position:absolute;
+                transform:translate(-50%,-50%);
+            `;
+            chContainer.appendChild(outer);
+        }
+
+        const inner = document.createElement("div");
+        inner.style.cssText = `
+            width:${state.chSize}px;
+            height:${state.chSize}px;
+            background:${state.chInner};
+            border-radius:50%;
+            position:absolute;
+            transform:translate(-50%,-50%);
+        `;
+        chContainer.appendChild(inner);
+    }
+    renderCrosshair();
+
+    function saveCH() {
+        localStorage.setItem("ch_enabled", state.chEnabled);
+        localStorage.setItem("ch_size", state.chSize);
+        localStorage.setItem("ch_thickness", state.chThickness);
+        localStorage.setItem("ch_inner", state.chInner);
+        localStorage.setItem("ch_outer", state.chOuter);
+        renderCrosshair();
+    }
+
+    /* ========= MUSIC ========= */
+    function ytToEmbed(url) {
+        if (!url) return "";
+        const id =
+            url.split("v=")[1]?.split("&")[0] ||
+            url.split("youtu.be/")[1]?.split("?")[0];
+
+        if (!id) return "";
+
+        const loop = state.musicLoop ? `&loop=1&playlist=${id}` : "";
+        return `https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1${loop}`;
+    }
+
+    /* ========= MENU ========= */
+    const menu = document.createElement("div");
+    menu.innerHTML = `
+    <div id="modMenu">
+
+        <div class="title">Mod Menu</div>
+
+        <div class="tabs">
+            <button data-tab="ui">🎨 Interface</button>
+            <button data-tab="perf">⚡ Perform</button>
+            <button data-tab="ch">🎯 Crosshair</button>
+            <button data-tab="music">🎵 Music</button>
+        </div>
+
+        <div class="tab ui">
+            <div class="row"><span>UI Color</span><input type="color" id="uiPicker"></div>
+        </div>
+
+        <div class="tab perf">
+            <div class="row">
+                <span>V-Sync</span>
+                <select id="vsyncSelect">
+                    <option value="off">OFF</option>
+                    <option value="60">60</option>
+                    <option value="120">120</option>
+                    <option value="240">240</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tab ch">
+            <div class="row"><span>Enable</span><input type="checkbox" id="chEnable"></div>
+            <div class="row"><span>Dot Size</span><input type="range" min="1" max="20" id="chSize"></div>
+            <div class="row"><span>Outline</span><input type="range" min="0" max="10" id="chThickness"></div>
+            <div class="row"><span>Inner</span><input type="color" id="chInner"></div>
+            <div class="row"><span>Outer</span><input type="color" id="chOuter"></div>
+        </div>
+
+        <div class="tab music">
+            <div class="row">
+                <input type="text" id="musicUrl" placeholder="Paste YouTube link..." style="width:100%">
+            </div>
+            <div class="musicControls">
+                <button id="musicToggle">▶</button>
+                <label class="loopBox">
+                    <input type="checkbox" id="musicLoop">
+                    <span>Loop</span>
+                </label>
+            </div>
+       <iframe id="musicPlayer" allow="autoplay" style="display:none"></iframe>
+        </div>
+    </div>`;
+    document.body.appendChild(menu);
+
+    /* ========= STYLE ========= */
+    const style = document.createElement("style");
+    style.textContent = `
+ #modMenu{
+position:fixed;
+top:50px;
+right:50px;
+width:280px;
+padding:22px;
+background:#121212;
+color:#fff;
+font-family:Arial;
+border-radius:30px;
+z-index:99999;
+
+opacity:0;
+transform:scale(.85) translateY(-10px);
+pointer-events:none;
+transition:.25s ease;
+
+/* nền giữ nguyên */
+border:2px solid transparent;
+background-clip:padding-box;
+}
+
+/* 🌈 Gradient Border + Glow */
+#modMenu::before{
+content:"";
+position:absolute;
+inset:0;
+padding:3px; /* độ dày viền */
+border-radius:30px;
+
+background:linear-gradient(280deg,
+red,
+orange,
+yellow,
+lime,
+cyan,
+blue,
+violet,
+red);
+
+background-size:400% 400%;
+animation:rgbFast 5s linear infinite; /* chạy nhanh */
+
+z-index:-1;
+
+/* tạo lỗ giữa để thành viền */
+-webkit-mask:
+linear-gradient(#000 0 0) content-box,
+linear-gradient(#000 0 0);
+-webkit-mask-composite:xor;
+mask-composite:exclude;
+
+/* 🔥 glow ngoài */
+filter:blur(6px);
+}
+
+/* chạy siêu nhanh */
+@keyframes rgbFast{
+0%{background-position:0% 50%;}
+100%{background-position:400% 50%;}
+}
+
+#modMenu.open{
+opacity:1;
+transform:scale(1) translateY(0);
+pointer-events:auto;
+}
+
+
+    #modMenu{
+    position:fixed;
+    top:50px;right:50px;
+    width:280px;
+    padding:22px;
+    background:#121212;
+    color:#fff;
+    font-family:Arial,sans-serif;
+    z-index:99999;
+    border-radius:30px;
+
+    opacity:0;
+    transform:scale(.85) translateY(-10px);
+    pointer-events:none;
+    transition:
+        opacity .25s ease,
+        transform .25s cubic-bezier(.2,.8,.2,1);
+}
+
+#modMenu.open{
+    opacity:1;
+    transform:scale(1) translateY(0);
+    pointer-events:auto;
+}
+
+    .title{text-align:center;font-weight:bold;margin-bottom:8px;}
+    .tabs{display:flex;gap:6px;margin-bottom:8px;}
+    .tabs button{
+        flex:1;
+        background:#222;
+        color:#fff;
+        border:none;
+        cursor:pointer;
+        font-size:12px;
+        border-radius: 30px;
+    }
+    .tabs button.active{background:#444;}
+    .tab{display:none;}
+    .tab.active{display:block;}
+    .row{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin:6px 0;
+        font-size:13px;
+        border-radius: 20px;
+    }
+    input,select,button{
+        background:#111;
+        color:#fff;
+        border:none;
+    }
+    .musicControls{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-top:8px;
+    }
+    #musicToggle{
+        font-size:20px;
+        width:42px;
+        height:42px;
+        border-radius:50%;
+        cursor:pointer;
+    }
+    .loopBox{
+        display:flex;
+        align-items:center;
+        gap:6px;
+        font-size:13px;
+        cursor:pointer;
+    }
+
+    `;
+    document.head.appendChild(style);
+
+    /* ========= BIND ========= */
+    const $ = q => menu.querySelector(q);
+
+    $("#uiPicker").value = state.uiColor;
+    $("#vsyncSelect").value = state.vsync;
+    $("#musicUrl").value = state.musicUrl;
+    $("#musicLoop").checked = state.musicLoop;
+
+    $("#chEnable").checked = state.chEnabled;
+    $("#chSize").value = state.chSize;
+    $("#chThickness").value = state.chThickness;
+    $("#chInner").value = state.chInner;
+    $("#chOuter").value = state.chOuter;
+
+    $("#uiPicker").oninput = e => {
+        state.uiColor = e.target.value;
+        localStorage.setItem("mod_ui_color", state.uiColor);
+        applyUIColor();
+    };
+
+    $("#chEnable").onchange = e => { state.chEnabled = e.target.checked; saveCH(); };
+    $("#chSize").oninput = e => { state.chSize = +e.target.value; saveCH(); };
+    $("#chThickness").oninput = e => { state.chThickness = +e.target.value; saveCH(); };
+    $("#chInner").oninput = e => { state.chInner = e.target.value; saveCH(); };
+    $("#chOuter").oninput = e => { state.chOuter = e.target.value; saveCH(); };
+
+     $("#vsyncSelect").onchange = e => {
+        state.vsync = e.target.value;
+        localStorage.setItem("mod_vsync", state.vsync);
+        applyVsync();
+    };
+
+    $("#musicLoop").onchange = e => {
+        state.musicLoop = e.target.checked;
+        localStorage.setItem("music_loop", state.musicLoop);
+        if (state.musicPlaying) {
+            $("#musicPlayer").src = ytToEmbed(state.musicUrl);
+        }
+    };
+
+    $("#musicToggle").onclick = () => {
+        if (!state.musicPlaying) {
+            state.musicUrl = $("#musicUrl").value.trim();
+            if (!state.musicUrl) return;
+            localStorage.setItem("music_url", state.musicUrl);
+            $("#musicPlayer").src = ytToEmbed(state.musicUrl);
+            $("#musicToggle").textContent = "⏸";
+            state.musicPlaying = true;
+        } else {
+            $("#musicPlayer").src = "";
+            $("#musicToggle").textContent = "▶";
+            state.musicPlaying = false;
+        }
+    };
+
+    /* ========= TABS ========= */
+    function setTab(name) {
+        state.tab = name;
+        localStorage.setItem("mod_tab", name);
+        menu.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        menu.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+        menu.querySelector(`.tab.${name}`)?.classList.add("active");
+        menu.querySelector(`[data-tab="${name}"]`).classList.add("active");
+    }
+    menu.querySelectorAll(".tabs button").forEach(b =>
+        b.onclick = () => setTab(b.dataset.tab)
+    );
+    setTab(state.tab);
+
+ /* ========= TOGGLE ========= */
+document.addEventListener("keydown", e => {
+    if (e.key.toLowerCase() === "o") {
+        state.open = !state.open;
+
+        if (state.open) {
+            $("#modMenu").classList.add("open");
+        } else {
+            $("#modMenu").classList.remove("open");
+        }
+    }
+});
+})();
