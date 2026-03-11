@@ -1,0 +1,819 @@
+// ==UserScript==
+// @name         Addons Menu
+// @namespace    https://narrow.one/
+// @version      1.6
+// @description  Toggle 
+// @author       Parrol
+// @match        *://narrow.one/*
+// @author       Parrol
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    /* ========= STATE ========= */
+    const state = {
+        tab: localStorage.getItem("mod_tab") || "ui",
+
+        uiColor: localStorage.getItem("mod_ui_color") || "#1e1e1e",
+        vsync: localStorage.getItem("mod_vsync") || "off",
+
+        chEnabled: JSON.parse(localStorage.getItem("ch_enabled") ?? "true"),
+        chSize: +localStorage.getItem("ch_size") || 4,
+        chThickness: +localStorage.getItem("ch_thickness") || 1,
+        chInner: localStorage.getItem("ch_inner") || "#ffffff",
+        chOuter: localStorage.getItem("ch_outer") || "#000000",
+
+        musicUrl: localStorage.getItem("music_url") || "",
+        musicLoop: JSON.parse(localStorage.getItem("music_loop") ?? "false"),
+
+        open: false
+    };
+
+    /* ========= UI COLOR ========= */
+    function applyUIColor() {
+        const root = document.documentElement;
+        root.style.setProperty("--default-ui-bg-color", state.uiColor);
+        root.style.setProperty("--secondary-ui-bg-color", state.uiColor);
+        root.style.setProperty("--shop-item-background-color", state.uiColor);
+    }
+    applyUIColor();
+
+    /* ========= VSYNC ========= */
+    let fpsLimit = null;
+    function applyVsync() {
+        fpsLimit =
+            state.vsync === "60" ? 60 :
+            state.vsync === "120" ? 120 :
+            state.vsync === "240" ? 240 :
+            null;
+    }
+    applyVsync();
+
+    let last = performance.now();
+    const _raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = function (cb) {
+        if (!fpsLimit) return _raf(cb);
+        const now = performance.now();
+        const interval = 1000 / fpsLimit;
+        if (now - last >= interval) {
+            last = now;
+            cb(now);
+        } else {
+            _raf(() => window.requestAnimationFrame(cb));
+        }
+    };
+
+    /* ========= CROSSHAIR ========= */
+    const chContainer = document.createElement("div");
+    chContainer.style.cssText = `
+        position:fixed;
+        top:50%;left:50%;
+        transform:translate(-50%,-50%);
+        pointer-events:none;
+        z-index:2147483647;
+    `;
+    document.body.appendChild(chContainer);
+
+    function renderCrosshair() {
+        chContainer.innerHTML = "";
+        if (!state.chEnabled) return;
+
+        if (state.chThickness > 0) {
+            const outer = document.createElement("div");
+            outer.style.cssText = `
+                width:${state.chSize + state.chThickness * 2}px;
+                height:${state.chSize + state.chThickness * 2}px;
+                background:${state.chOuter};
+                border-radius:50%;
+                position:absolute;
+                transform:translate(-50%,-50%);
+            `;
+            chContainer.appendChild(outer);
+        }
+
+        const inner = document.createElement("div");
+        inner.style.cssText = `
+            width:${state.chSize}px;
+            height:${state.chSize}px;
+            background:${state.chInner};
+            border-radius:50%;
+            position:absolute;
+            transform:translate(-50%,-50%);
+        `;
+        chContainer.appendChild(inner);
+    }
+    renderCrosshair();
+
+    function saveCH() {
+        localStorage.setItem("ch_enabled", state.chEnabled);
+        localStorage.setItem("ch_size", state.chSize);
+        localStorage.setItem("ch_thickness", state.chThickness);
+        localStorage.setItem("ch_inner", state.chInner);
+        localStorage.setItem("ch_outer", state.chOuter);
+        renderCrosshair();
+    }
+
+    /* ========= MUSIC ========= */
+    function ytToEmbed(url) {
+        if (!url) return "";
+        const id =
+            url.split("v=")[1]?.split("&")[0] ||
+            url.split("youtu.be/")[1]?.split("?")[0];
+
+        if (!id) return "";
+
+        const loop = state.musicLoop ? `&loop=1&playlist=${id}` : "";
+        return `https://www.youtube.com/embed/${id}?enablejsapi=1&autoplay=1${loop}`;
+    }
+
+    /* ========= MENU ========= */
+    const menu = document.createElement("div");
+    menu.innerHTML = `
+    <div id="modMenu">
+
+        <div class="title">Mod Menu</div>
+
+        <div class="tabs">
+            <button data-tab="ui">🎨 Mechanic</button>
+            <button data-tab="tools">🧱 Tools</button>
+            <button data-tab="ch">🎯 Crosshair</button>
+            <button data-tab="music">🎵 Music</button>
+            <button data-tab="game">🎮 Apps</button>
+        </div>
+
+        <div class="tab ui">
+            <div class="row"><span>UI Color</span><input type="color" id="uiPicker"></div>
+            <div class="row">
+                <span>V-Sync</span>
+                <select id="vsyncSelect">
+                    <option value="off">OFF</option>
+                    <option value="60">60 FPS</option>
+                    <option value="120">120 FPS</option>
+                    <option value="240">240 FPS</option>
+                </select>
+            </div>
+        </div>
+
+       <div class="tab tools">
+
+    <!-- Calculator -->
+    <div class="toolBox">
+        <div class="toolTitle">🧮 Calculator</div>
+        <input type="text" id="calcInput" placeholder="2+2*10">
+        <button id="calcBtn">=</button>
+        <div id="calcResult"></div>
+    </div>
+
+    <!-- Timer -->
+    <div class="toolBox">
+        <div class="toolTitle">⏱ Countdown</div>
+        <input type="number" id="timerInput" placeholder="Seconds">
+        <button id="timerStart">Start</button>
+        <div id="timerDisplay">00</div>
+    </div>
+
+    <!-- Notes -->
+    <div class="toolBox">
+        <div class="toolTitle">📝 Notes</div>
+        <textarea id="notesBox" placeholder="Write something..."></textarea>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="toolBox">
+        <div class="toolTitle">🔗 Quick Links</div>
+        <button class="quickLink" data-url="https://github.com/">Github</button>
+        <button class="quickLink" data-url="https://youtube.com">Youtube</button>
+        <button class="quickLink" data-url="https://chat.openai.com">ChatGPT</button>
+    </div>
+
+</div>
+
+
+        <div class="tab ch">
+            <div class="row"><span>Enable</span><input type="checkbox" id="chEnable"></div>
+            <div class="row"><span>Dot Size</span><input type="range" min="1" max="20" id="chSize"></div>
+            <div class="row"><span>Outline</span><input type="range" min="0" max="10" id="chThickness"></div>
+            <div class="row"><span>Inner</span><input type="color" id="chInner"></div>
+            <div class="row"><span>Outer</span><input type="color" id="chOuter"></div>
+        </div>
+
+        <div class="tab music">
+            <div class="row">
+                <input type="text" id="musicUrl" placeholder="Paste YouTube link..." style="width:100%">
+            </div>
+            <div class="musicControls">
+                <button id="musicToggle">▶</button>
+                <label class="loopBox">
+                    <input type="checkbox" id="musicLoop">
+                    <span>Loop</span>
+                </label>
+            </div>
+       <iframe id="musicPlayer" allow="autoplay" style="display:none"></iframe>
+        </div>
+
+        <div class="tab game">
+    <div class="row" style="justify-content:space-between;">
+        <span>Snake</span>
+        <button id="launchSnake">Launch</button>
+    </div>
+    <div class="row">
+    <span>Zalo</span>
+    <button id="openZalo" class="launchBtn">Launch</button>
+</div>
+<div class="row">
+    <span>Discord</span>
+    <button id="openDiscord" class="launchBtn">Launch</button>
+</div>
+
+
+
+    <canvas id="snakeCanvas" width="240" height="240" style="display:none;border-radius:15px;background:#000;margin-top:10px;"></canvas>
+</div>
+
+    </div>`;
+    document.body.appendChild(menu);
+
+    /* ========= STYLE ========= */
+    const style = document.createElement("style");
+    style.textContent = `
+ #modMenu{
+position:fixed;
+top:50px;
+left:50px;
+width:280px;
+padding:22px;
+background:#121212;
+color:#fff;
+font-family:Arial;
+border-radius:30px;
+z-index:99999;
+
+opacity:0;
+transform:scale(.85) translateY(-10px);
+pointer-events:none;
+transition:.25s ease;
+
+/* nền giữ nguyên */
+border:2px solid transparent;
+background-clip:padding-box;
+}
+
+/* 🌈 Gradient Border + Glow */
+#modMenu::before{
+content:"";
+position:absolute;
+inset:0;
+padding:3px; /* độ dày viền */
+border-radius:30px;
+
+background:linear-gradient(280deg,
+red,
+orange,
+yellow,
+lime,
+cyan,
+blue,
+violet,
+red);
+
+background-size:400% 400%;
+animation:rgbFast 5s linear infinite; /* chạy nhanh */
+
+z-index:-1;
+
+/* tạo lỗ giữa để thành viền */
+-webkit-mask:
+linear-gradient(#000 0 0) content-box,
+linear-gradient(#000 0 0);
+-webkit-mask-composite:xor;
+mask-composite:exclude;
+
+/* 🔥 glow ngoài */
+filter:blur(6px);
+}
+
+/* chạy siêu nhanh */
+@keyframes rgbFast{
+0%{background-position:0% 50%;}
+100%{background-position:400% 50%;}
+}
+
+#modMenu.open{
+opacity:1;
+transform:scale(1) translateY(0);
+pointer-events:auto;
+}
+
+
+    #modMenu{
+    position:fixed;
+    top:50px;right:50px;
+    width:280px;
+    padding:22px;
+    background:#121212;
+    color:#fff;
+    font-family:Arial,sans-serif;
+    z-index:99999;
+    border-radius:30px;
+
+    opacity:0;
+    transform:scale(.85) translateY(-10px);
+    pointer-events:none;
+    transition:
+        opacity .25s ease,
+        transform .25s cubic-bezier(.2,.8,.2,1);
+}
+
+#modMenu.open{
+    opacity:1;
+    transform:scale(1) translateY(0);
+    pointer-events:auto;
+}
+
+    .title{text-align:center;font-weight:bold;margin-bottom:8px;}
+    .tabs{display:flex;gap:6px;margin-bottom:8px;}
+    .tabs button{
+        flex:1;
+        background:#222;
+        color:#fff;
+        border:none;
+        cursor:pointer;
+        font-size:12px;
+        border-radius: 30px;
+    }
+    .tabs button.active{background:#444;}
+    .tab{display:none;}
+    .tab.active{display:block;}
+    .row{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin:6px 0;
+        font-size:13px;
+        border-radius: 20px;
+    }
+    input,select,button{
+        background:#111;
+        color:#fff;
+        border:none;
+    }
+    .toolBox{
+    background:#181818;
+    padding:10px;
+    border-radius:14px;
+    margin-bottom:10px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+}
+
+.toolTitle{
+    font-size:13px;
+    font-weight:bold;
+    opacity:.8;
+}
+
+#calcInput,
+#timerInput,
+#notesBox{
+    background:#111;
+    color:#fff;
+    border:none;
+    padding:6px;
+    border-radius:8px;
+}
+
+#notesBox{
+    resize:none;
+    height:60px;
+}
+
+.quickLink{
+    background:#222;
+    border:none;
+    padding:6px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.quickLink:hover{
+    background:#2f7dff;
+}
+
+    .musicControls{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-top:8px;
+    }
+    #musicToggle{
+    padding:6px 14px;
+    border-radius:20px;
+    background:#111;
+    color:#fff;
+    cursor:pointer;
+
+    transition:
+        background .25s ease,
+        color .25s ease,
+        box-shadow .25s ease,
+        transform .15s ease;
+}
+    #musicToggle:hover{
+  background:#ff0033;
+    box-shadow:
+        0 0 10px #ff0033,
+        0 0 25px #ff0033;
+    transform:scale(1.05);
+}
+    #musicToggle:active{
+        transform:scale(.95);
+}
+    #musicToggle{
+        font-size:20px;
+        width:42px;
+        height:42px;
+        border-radius:50%;
+        cursor:pointer;
+    }
+    .loopBox{
+        display:flex;
+        align-items:center;
+        gap:6px;
+        font-size:13px;
+        cursor:pointer;
+    }
+    #launchSnake{
+padding:6px 12px;
+border-radius:20px;
+cursor:pointer;
+}
+
+#snakeCanvas{
+border:2px solid #fff;
+}
+#launchSnake{
+    padding:6px 14px;
+    border-radius:20px;
+    background:#111;
+    color:#fff;
+    border:1px solid #333;
+    cursor:pointer;
+
+    transition:
+        background .25s ease,
+        color .25s ease,
+        box-shadow .25s ease,
+        transform .15s ease;
+}
+
+/* Hover → xanh glow */
+#launchSnake:hover{
+    background:#00ff88;
+    color:#fff;
+    box-shadow:
+        0 0 10px #00ff88,
+        0 0 25px #00ff88;
+    transform:scale(1.05);
+}
+
+/* Click effect */
+#launchSnake:active{
+    transform:scale(.95);
+}
+.launchBtn{
+    border:1px solid #333;
+    padding:6px 14px;
+    border-radius:20px;
+    background:#111;
+    color:#fff;
+    cursor:pointer;
+    transition:all .25s ease;
+}
+
+.launchBtn:hover{
+    background:#0055ff;
+    box-shadow:0 0 15px #0055ff;
+    transform:scale(1.05);
+}
+
+
+
+
+    `;
+    document.head.appendChild(style);
+
+    /* ========= BIND ========= */
+    const $ = q => menu.querySelector(q);
+
+    $("#uiPicker").value = state.uiColor;
+    $("#vsyncSelect").value = state.vsync;
+    $("#musicUrl").value = state.musicUrl;
+    $("#musicLoop").checked = state.musicLoop;
+
+    $("#chEnable").checked = state.chEnabled;
+    $("#chSize").value = state.chSize;
+    $("#chThickness").value = state.chThickness;
+    $("#chInner").value = state.chInner;
+    $("#chOuter").value = state.chOuter;
+
+    $("#uiPicker").oninput = e => {
+        state.uiColor = e.target.value;
+        localStorage.setItem("mod_ui_color", state.uiColor);
+        applyUIColor();
+    };
+
+    $("#chEnable").onchange = e => { state.chEnabled = e.target.checked; saveCH(); };
+    $("#chSize").oninput = e => { state.chSize = +e.target.value; saveCH(); };
+    $("#chThickness").oninput = e => { state.chThickness = +e.target.value; saveCH(); };
+    $("#chInner").oninput = e => { state.chInner = e.target.value; saveCH(); };
+    $("#chOuter").oninput = e => { state.chOuter = e.target.value; saveCH(); };
+
+
+    $("#musicLoop").onchange = e => {
+        state.musicLoop = e.target.checked;
+        localStorage.setItem("music_loop", state.musicLoop);
+        if (state.musicPlaying) {
+            $("#musicPlayer").src = ytToEmbed(state.musicUrl);
+        }
+    };
+    $("#vsyncSelect").onchange = e => {
+        state.vsync = e.target.value;
+        localStorage.setItem("mod_vsync", state.vsync);
+        applyVsync();
+    };
+
+    $("#musicToggle").onclick = () => {
+        if (!state.musicPlaying) {
+            state.musicUrl = $("#musicUrl").value.trim();
+            if (!state.musicUrl) return;
+            localStorage.setItem("music_url", state.musicUrl);
+            $("#musicPlayer").src = ytToEmbed(state.musicUrl);
+            $("#musicToggle").textContent = "⏸";
+            state.musicPlaying = true;
+        } else {
+            $("#musicPlayer").src = "";
+            $("#musicToggle").textContent = "▶";
+            state.musicPlaying = false;
+        }
+    };
+    $("#openZalo").onclick = () => {
+    // thử mở app trước
+    window.location.href = "zalo://";
+
+    // fallback mở web nếu không có app
+    setTimeout(() => {
+        window.open("https://chat.zalo.me/", "_blank");
+    }, 500);
+};
+    $("#openDiscord").onclick = () => {
+    // thử mở app trước
+    window.location.href = "discord://";
+
+    // fallback mở web nếu không có app
+    setTimeout(() => {
+        window.open("https://discord.com/app", "_blank");
+    }, 600);
+};
+
+
+    /* ========= SNAKE GAME ========= */
+const canvas = $("#snakeCanvas");
+const ctx = canvas.getContext("2d");
+const grid = 12;
+const tileCount = 20;
+
+let snake, food, dx, dy, snakeLoop;
+let score = 0;
+let started = false;
+
+function startSnake(){
+    canvas.style.display = "block";
+
+    snake = [{x:10*grid,y:10*grid}];
+    dx = 0;
+    dy = 0;
+    score = 0;
+    started = false;
+
+    spawnFood();
+    drawSnake();
+
+    clearInterval(snakeLoop);
+}
+
+function spawnFood(){
+    food = {
+        x:Math.floor(Math.random()*tileCount)*grid,
+        y:Math.floor(Math.random()*tileCount)*grid
+    };
+}
+
+function updateSnake(){
+    const head = {x:snake[0].x+dx,y:snake[0].y+dy};
+    snake.unshift(head);
+
+    if(head.x===food.x && head.y===food.y){
+        score++;
+        spawnFood();
+    } else {
+        snake.pop();
+    }
+
+    if(head.x<0||head.y<0||head.x>=canvas.width||head.y>=canvas.height||
+       snake.slice(1).some(s=>s.x===head.x&&s.y===head.y)){
+        clearInterval(snakeLoop);
+        alert("Game Over 💀 Score: "+score);
+        canvas.style.display="none";
+        return;
+    }
+
+    drawSnake();
+}
+
+function drawGrid(){
+    ctx.strokeStyle = "#222";
+    for(let i=0;i<=tileCount;i++){
+        ctx.beginPath();
+        ctx.moveTo(i*grid,0);
+        ctx.lineTo(i*grid,canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0,i*grid);
+        ctx.lineTo(canvas.width,i*grid);
+        ctx.stroke();
+    }
+}
+
+function drawSnake(){
+    ctx.fillStyle="#000";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    drawGrid();
+
+    ctx.fillStyle="lime";
+    snake.forEach(s=>ctx.fillRect(s.x,s.y,grid-1,grid-1));
+
+    ctx.fillStyle="red";
+    ctx.fillRect(food.x,food.y,grid-1,grid-1);
+
+    ctx.fillStyle="#fff";
+    ctx.font="14px Arial";
+    ctx.fillText("Score: "+score,8,16);
+
+    if(!started){
+        ctx.fillStyle="rgba(0,0,0,.6)";
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        ctx.fillStyle="#fff";
+        ctx.textAlign="center";
+        ctx.fillText("Press any key to start",canvas.width/2,canvas.height/2);
+        ctx.textAlign="left";
+    }
+}
+
+document.addEventListener("keydown",e=>{
+    if(state.tab!=="game") return;
+    if(canvas.style.display==="none") return;
+
+    if(!started){
+        started = true;
+        snakeLoop = setInterval(updateSnake,100);
+    }
+
+    if(e.key==="ArrowUp" && dy===0){dx=0;dy=-grid;}
+    if(e.key==="ArrowDown" && dy===0){dx=0;dy=grid;}
+    if(e.key==="ArrowLeft" && dx===0){dx=-grid;dy=0;}
+    if(e.key==="ArrowRight" && dx===0){dx=grid;dy=0;}
+});
+
+$("#launchSnake").onclick=startSnake;
+
+
+   /* ========= CALCULATOR ========= */
+$("#calcBtn").onclick = () => {
+    try{
+        const result = eval($("#calcInput").value);
+        $("#calcResult").textContent = result;
+    }catch{
+        $("#calcResult").textContent = "Error";
+    }
+};
+
+/* ========= TIMER ========= */
+let timerInterval = null;
+
+$("#timerStart").onclick = () => {
+    let seconds = parseInt($("#timerInput").value);
+    if (!seconds || seconds <= 0) return;
+
+    clearInterval(timerInterval);
+    $("#timerDisplay").textContent = seconds;
+
+    timerInterval = setInterval(() => {
+        seconds--;
+        $("#timerDisplay").textContent = seconds;
+
+        if (seconds <= 0){
+            clearInterval(timerInterval);
+            $("#timerDisplay").textContent = "DONE";
+        }
+    },1000);
+};
+
+/* ========= NOTES ========= */
+const notes = $("#notesBox");
+notes.value = localStorage.getItem("mod_notes") || "";
+
+notes.oninput = () => {
+    localStorage.setItem("mod_notes", notes.value);
+};
+
+/* ========= QUICK LINKS ========= */
+menu.querySelectorAll(".quickLink").forEach(btn=>{
+    btn.onclick = () => {
+        window.open(btn.dataset.url, "_blank");
+    };
+});
+
+
+
+    /* ========= TABS ========= */
+    function setTab(name) {
+        state.tab = name;
+        localStorage.setItem("mod_tab", name);
+        menu.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        menu.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+        menu.querySelector(`.tab.${name}`)?.classList.add("active");
+        menu.querySelector(`[data-tab="${name}"]`).classList.add("active");
+    }
+    menu.querySelectorAll(".tabs button").forEach(b =>
+        b.onclick = () => setTab(b.dataset.tab)
+    );
+    setTab(state.tab);
+
+ /* ========= TOGGLE ========= */
+document.addEventListener("keydown", e => {
+    if (e.key.toLowerCase() === "o") {
+        state.open = !state.open;
+
+        if (state.open) {
+            $("#modMenu").classList.add("open");
+        } else {
+            $("#modMenu").classList.remove("open");
+        }
+    }
+});
+    /* ========= DRAG ========= */
+
+const panel = document.getElementById("modMenu");
+
+let isDragging = false;
+let offsetX = 0;
+let offsetY = 0;
+
+/* cho nó nhớ vị trí */
+const savedX = localStorage.getItem("mod_pos_x");
+const savedY = localStorage.getItem("mod_pos_y");
+
+if (savedX && savedY) {
+    panel.style.left = savedX + "px";
+    panel.style.top = savedY + "px";
+    panel.style.right = "auto";
+}
+
+/* chỉ drag khi bấm vào title */
+panel.querySelector(".title").addEventListener("mousedown", e => {
+    isDragging = true;
+
+    offsetX = e.clientX - panel.getBoundingClientRect().left;
+    offsetY = e.clientY - panel.getBoundingClientRect().top;
+
+    panel.style.transition = "none"; // bỏ animation khi kéo
+});
+
+document.addEventListener("mousemove", e => {
+    if (!isDragging) return;
+
+    const x = e.clientX - offsetX;
+    const y = e.clientY - offsetY;
+
+    panel.style.left = x + "px";
+    panel.style.top = y + "px";
+    panel.style.right = "auto";
+});
+
+document.addEventListener("mouseup", () => {
+    if (!isDragging) return;
+    isDragging = false;
+
+    localStorage.setItem("mod_pos_x", panel.offsetLeft);
+    localStorage.setItem("mod_pos_y", panel.offsetTop);
+
+    panel.style.transition = ".25s ease"; // bật lại animation
+});
+})();
