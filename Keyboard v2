@@ -1,0 +1,147 @@
+// ==UserScript==
+// @name         Keyboard Overlay
+// @match        https://narrow.one/*
+// @version      1.0
+// @author       Parrol
+// @grant        none
+// ==/UserScript==
+
+(function(){
+
+const keys = [
+["Esc","1","2","3","4","5","6","7"],
+["Tab","Q","W","E","R","T","Y"],
+["Caps","A","S","D","F","G","H"],
+["Shift","Z","X","C","V","B","N"],
+["Ctrl","Alt","Space","Win","/"]
+];
+
+const container=document.createElement("div");
+container.style.position="fixed";
+container.style.bottom="20px";
+container.style.left="20px";
+container.style.background="#111";
+container.style.padding="10px";
+container.style.borderRadius="8px";
+container.style.zIndex="999999";
+container.style.userSelect="none";
+container.style.fontFamily="monospace";
+
+document.body.appendChild(container);
+
+const keyMap={};
+
+keys.forEach(row=>{
+  const r=document.createElement("div");
+  r.style.display="flex";
+  container.appendChild(r);
+
+  row.forEach(k=>{
+    const key=document.createElement("div");
+    key.innerText=k;
+
+    key.style.border="1px solid #333";
+    key.style.background="#222";
+    key.style.color="#eee";
+    key.style.margin="2px";
+    key.style.padding="6px 8px";
+    key.style.fontSize="11px";
+    key.style.textAlign="center";
+
+    if(k==="Space") key.style.width="160px";
+    else if(k==="Backspace"||k==="Enter"||k==="Shift") key.style.width="60px";
+    else if(k==="Tab"||k==="Caps") key.style.width="50px";
+    else key.style.width="26px";
+
+    r.appendChild(key);
+    keyMap[k.toLowerCase()]=key;
+  });
+});
+
+function mapKey(e){
+  if(e.key===" ") return "space";
+  if(e.key==="Escape") return "esc";
+  if(e.key==="Control") return "ctrl";
+  if(e.key==="Meta") return "win";
+  return e.key.toLowerCase();
+}
+
+document.addEventListener("keydown",e=>{
+  const k=mapKey(e);
+  if(keyMap[k]) keyMap[k].style.background="#99cfff";
+});
+
+document.addEventListener("keyup",e=>{
+  const k=mapKey(e);
+  if(keyMap[k]) keyMap[k].style.background="#222";
+});
+
+/* mouse */
+
+const mouse=document.createElement("div");
+mouse.style.marginTop="10px";
+mouse.style.display="flex";
+mouse.style.justifyContent="center";
+
+mouse.innerHTML=`
+<div style="
+width:50px;
+height:70px;
+border:2px solid #333;
+border-radius:25px;
+background:#222;
+display:flex;
+flex-direction:column;
+overflow:hidden;
+">
+
+<div style="display:flex;height:28px;">
+<div id="ml" style="
+flex:1;
+border-right:1px solid #333;
+"></div>
+
+<div id="mr" style="
+flex:1;
+"></div>
+</div>
+
+<div style="flex:1;"></div>
+
+</div>
+`;
+
+container.appendChild(mouse);
+
+
+const ml=document.getElementById("ml");
+const mr=document.getElementById("mr");
+
+document.addEventListener("mousedown",e=>{
+if(e.button===0) ml.style.background="#99cfff";
+if(e.button===2) mr.style.background="#99cfff";
+});
+
+document.addEventListener("mouseup",e=>{
+if(e.button===0) ml.style.background="";
+if(e.button===2) mr.style.background="";
+});
+    /* drag */
+
+let drag=false,dx,dy;
+
+container.addEventListener("mousedown",e=>{
+drag=true;
+dx=e.clientX-container.offsetLeft;
+dy=e.clientY-container.offsetTop;
+});
+
+document.addEventListener("mousemove",e=>{
+if(!drag) return;
+container.style.left=(e.clientX-dx)+"px";
+container.style.top=(e.clientY-dy)+"px";
+container.style.bottom="auto";
+});
+    document.addEventListener("mouseup",()=>drag=false);
+
+})();
